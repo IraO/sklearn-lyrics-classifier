@@ -1,63 +1,154 @@
-import numpy as np
+import _pickle as cPickle
+import logging
+import os
+import os.path
+
+import nltk
 import pandas as pd
-
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk import word_tokenize
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import SGDClassifier
-from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+
+nltk.download('punkt')
+logging.basicConfig(format='%(message)s', level=logging.INFO)
+
+DEFAULT_ALPHA = 1e-5
+DEFAULT_MAX_FEATURES = None
 
 
-class LyricsClassifier():
-    def __init__(self, file='lyrics_filtered.tsv'):
-        self.data = self._get_data(file)
+class LyricsClassifier:
+    DEFAULT_MODEL_PATH = os.getcwd() + '/models/model.pkl'
+    DEFAULT_DATA_PATHS = os.getcwd() + '/models/data/train.tsv'
 
-    def _get_data(self, file):
-        df = pd.read_csv(file, sep='\t')
-        df.dropna(inplace=True)
+    def __init__(self):
+        self.data_paths = self.DEFAULT_DATA_PATHS
+        self.loss = 'hinge'
+        self.penalty = 'l2'
+        self.best_params = None
+        self.tokenizer = word_tokenize
+
+    def create_model(self, max_iter, alpha, max_features):
+        """
+        Initialize svm model pipeline with CountVectorizer, TfidfTransformer and SGDClassifier
+        """
+        self.text_clf = Pipeline([
+            ('vector', CountVectorizer(tokenizer=self.tokenizer, max_features=max_features)),
+            ('tfidf', TfidfTransformer()),
+            ('clf', SGDClassifier(loss=self.loss, penalty=self.penalty, alpha=alpha, max_iter=max_iter))
+        ])
+
+    def train_model(self, data_paths=None):
+        if data_paths is not None:
+            self.data_paths = data_paths
+
+        data = pd.read_csv(self.data_paths, sep='\t')
+        data.dropna(inplace=True)
+        data = data.sample(frac=1).reset_index(drop=True)
 
         def reduce_lyrics(row):
             return row[:200]
-        df['lyrics'] = df.apply(lambda row: reduce_lyrics(row['lyrics']), axis=1)
-        print('Corpus: ', df.shape)
-        return df
 
-    def vectorize_lyrics(self, sentence=None):
-        vectorizer = TfidfVectorizer(min_df=1)
-        corpus = sentence if sentence else self.data['lyrics']
-        if sentence:
-            x2 = vectorizer.transform(sentence)
-            return pd.SparseDataFrame(X2, columns=vectorizer.get_feature_names(), default_fill_value=0)
-        return vectorizer.fit_transform(corpus)
+        data['lyrics'] = data.apply(lambda row: reduce_lyrics(row['lyrics']), axis=1)
 
-    def train(self, x, y):
-        svm = SGDClassifier(loss='hinge', penalty='l2', alpha=1e-3 ,random_state=42)
-        svm.fit(x, y)
-        return svm
+        logging.info("training model")
+        self.text_clf.fit(data['lyrics'], data['genre'])
 
-    def evaluate(self):
-        pass
+    def save_model(self, model_path: str = None):
+        """ Saves model under given path. If no path is provided class specific default model path is used.
 
-    def run(self, sentence=None):
-        print('Vectorization...')
-        x = self.vectorize_lyrics()
-        y = self.data['genre']
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+        :param model_path: Path
+        :return: None
+        """
+        model_path = self._get_model_path(model_path)
+        with open(model_path, 'wb') as out:
+            cPickle.dump(self.text_clf, out)
+            logging.info("Model successfully dumped in {}".format(model_path))
 
-        print('Training...')
-        svm = self.train(x_train, y_train)
-        if sentence:
-            x_new = self.vectorize_lyrics(sentence)
-            import pdb
-            pdb.set_trace()
-            predict = svm.predict(x_new)
-            print(predict.data)
-        else:
-            predict = svm.predict(x_test)
-            print(svm.score(x_test, y_test))
-            print(confusion_matrix(predict, y_test))
+    def calculate_cross_val_score(self, cv=10, data=None):
+        """
+        :param cv: Optional number of cross validations
+        :param data: Data on which cross validation will be run. If not provided default data is used.
+        :return: List of scores for cross validation
+        """
+        data = pd.read_csv(self.data_paths, sep='\t')
+        data.dropna(inplace=True)
+        data = data.sample(frac=1).reset_index(drop=True)
+
+        def reduce_lyrics(row):
+            return row[:200]
+
+        data['lyrics'] = data.apply(lambda row: reduce_lyrics(row['lyrics']), axis=1)
+        logging.info("Running cross validation")
+        scores = cross_val_score(self.text_clf, data['lyrics'], data['genre'], cv=cv)
+        logging.info("Cross validation accuracy: %0.4f (+/- %0.4f)" % (scores.mean(), scores.std() * 2))
+        return scores
+
+    def predict(self, sentences):
+        """
+        Make prediction using pretrained model
+        :param sentences: List of lyrics
+        :return: List od results -> ['Hip-Hop', 'Rock']
+        """
+        result = self.text_clf.predict(sentences)
+        return result
+
+    def load(self, filepath=None):
+        """
+        Loads pretrained model to use it. If no path is provided class specific default model path is used.
+        :param filepath: path to the model
+        """
+        filepath = self._get_model_path(filepath)
+        if not os.path.isfile(filepath):
+            logging.info("No file was found. Building model now...")
+            model = LyricsClassifier.build_uninitialized()
+            model.train_model()
+            model.save_model()
+        with open(filepath, 'rb') as fid:
+            self.text_clf = cPickle.load(fid)
+        logging.info("Loaded successfully model {}".format(filepath))
+
+    @classmethod
+    def build_uninitialized(cls, max_iter=100, alpha=DEFAULT_ALPHA, max_features=DEFAULT_MAX_FEATURES):
+        """ Builds the empty version of the basic model which later needs to be trained.
+
+        :return:
+        """
+        model = cls()
+        model.create_model(max_iter, alpha, max_features)
+        return model
+
+    @classmethod
+    def build(cls, path=None):
+        """ Builds the empty model and initializes it from the given or default path.
+
+        :param path:
+        :return:
+        """
+        path = cls._get_model_path(path)
+        model = cls()
+        model.load(path)
+        return model
+
+    @classmethod
+    def _get_model_path(cls, model_path):
+        return cls.DEFAULT_MODEL_PATH if model_path is None else model_path
+
+
+def main():
+    model = LyricsClassifier.build_uninitialized()
+    model.train_model()
+    # model.calculate_cross_val_score()
+    model.save_model()
+
+    model = LyricsClassifier.build()
+
+    prediction = model.predict(["Hey, gimme my money"])
+    logging.info(prediction)
+    prediction2 = model.predict(['Love me harder. I want to be yours\nWe born to be together.'])
+    logging.info(prediction2)
 
 
 if __name__ == '__main__':
-    l_classifier = LyricsClassifier()
-    l_classifier.run(['Bitch gimme my money'])
-
+    main()
