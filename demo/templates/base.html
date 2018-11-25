@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BadwordClassifiers Demo</title>
+    <link href="{{ url_for('static', filename='css/lib/bootstrap.min.css') }}" rel="stylesheet" type="text/css">
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://npmcdn.com/tether@1.2.4/dist/js/tether.min.js"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/lib/jquery-3.2.1.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/lib/bootstrap.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script type=text/javascript>$SCRIPT_ROOT = {{ request.script_root|tojson|safe }};</script>
+</head>
+<body class="{% block bodyStyle %}{% endblock %}">
+{% block page %}
+{% block header %}{% endblock %}
+{% block content %}{% endblock %}
+{% block footer%}{% endblock %}
+{% endblock %}
+</body>
+</html>

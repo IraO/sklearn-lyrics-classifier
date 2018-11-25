@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{{ super() }}
+{% block page %}
+<div class="container-fluid" id="{% block pageId %}landingPage{% endblock %}">
+    {% block content %}
+    <div class="row">
+        <form id="generateForm" method="POST" class="col-sm-5 offset-sm-1">
+            <div>
+                    <img class="img-responsive" width="55%" src="/static/img/header.png">
+            </div>
+            <div id="user_sentence_field">
+                <div class="form-group col-10 ">
+                    <div class="col-sm-12">
+                        <label class="col-form-label" for="input_sentence">Input sentence</label>
+                    </div>
+                    <input autocomplete="off" class="form-control" id="input_sentence"
+                       maxlength="250" name="input_sentence" placeholder="Type sentence here" value="">
+                     <small class="form-control-feedback invisible">This field can't be empty.</small>
+                </div>
+                <div class="form-group col-sm-10">
+                    <div class="col-sm-12">
+                        <label class="col-form-label">Choose Classifer</label>
+                    </div>
+                    {% for val, name in music_styles.items() %}
+                        <div class="radio">
+                                <input type="radio" name="optradio" value="{{val}}" checked> {{name}}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="form-group col-sm-10">
+                    <button id="generateButton" type="submit" class="btn btn-secondary float-right">Classify</button>
+                </div>
+
+                <div id="response" class="col-sm-10">
+                    <p>Result: </p>
+                    <img id="resultPic" src="">
+                    <div id="responseText"></div>
+                    <div class="progress invisible">
+                        <div class="progress-bar grad animated" role="progressbar" style="width: 50%;"></div>
+                    </div>
+                    <label class="col-sm-12 resLabel collapse text-center">Generating response...</label>
+                </div>
+                <div id="errorText" class="alert alert-danger col-sm-6">
+                        <a href="#" class="close" data-dismiss="alert" aria-label="close">×</a>
+                        <strong>Error</strong>
+                </div>
+            </div>
+        </form>
+        <div class="col-sm-5">
+            <img style="float:right;" width="60%" src="/static/img/background.png">
+        </div>
+    </div>
+    {% endblock %}
+</div>
+{% endblock %}
